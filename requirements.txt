@@ -1,0 +1,4 @@
+streamlit==1.45.1
+PyPDF2==3.0.1
+weaviate-client==4.14.4
+ollama==0.4.8
