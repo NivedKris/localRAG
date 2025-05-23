@@ -2,6 +2,9 @@
 env/
 venv/
 .venv/
+ENV/
+env.bak/
+venv.bak/
 
 # Python cache files
 __pycache__/
@@ -12,9 +15,22 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+MANIFEST
 
 # Streamlit specific
 .streamlit/
+.streamlit/secrets.toml
 
 # Editor specific files
 .idea/
@@ -25,10 +41,45 @@ build/
 # OS specific files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Local development
 .env
 .env.local
+.env.*
 
 # Log files
 *.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Project specific
+ollama_cache/
+weaviate_data/
+uploaded_policies/
+*.pdf
+temp_uploads/
+
+# Documentation
+/docs/_build/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
