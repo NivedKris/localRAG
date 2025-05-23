@@ -22,7 +22,7 @@ This is a fully local RAG (Retrieval-Augmented Generation) system that allows yo
 
 1. Make sure you have Weaviate running locally:
    ```
-   docker run -d -p 8080:8080 --name weaviate-server semitechnologies/weaviate:latest
+   docker run -d -p 50051:50051 --name weaviate-server semitechnologies/weaviate:latest
    ```
 
 2. Make sure you have Ollama running locally and the required models installed:
