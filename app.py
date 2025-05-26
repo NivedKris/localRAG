@@ -37,11 +37,22 @@ if "hr_memory" not in st.session_state:
 if "agent_mapping" not in st.session_state:
     st.session_state.agent_mapping = {}
 
-# Connect to local Weaviate instance
+# Connect to Weaviate instance
 @st.cache_resource
 def get_weaviate_client():
-    return weaviate.connect_to_local()
-
+    weaviate_host = os.environ.get("WEAVIATE_HOST", "localhost")
+    weaviate_grpc_host = os.environ.get("WEAVIATE_GRPC_HOST", weaviate_host)
+    return weaviate.connect_to_custom(
+        http_host=weaviate_host,
+        http_port=8080,
+        http_secure=False,  # Set to True if using HTTPS
+        grpc_host=weaviate_grpc_host,
+        grpc_port=50051,
+        grpc_secure=False,  # Set to True if using secure gRPC
+        additional_config=weaviate.AdditionalConfig(
+            trust_env=True  # Required for custom SSL certificates
+        )
+    )
 # Create a data collection if it doesn't exist
 def initialize_collection(client):
     collection_name = "hr_policies"
@@ -85,7 +96,7 @@ def extract_text_from_pdf(pdf_file, file_name, policy_category, last_updated):
 def embed_and_store(collection, text_chunks):
     with collection.batch.fixed_size(batch_size=100) as batch:
         for chunk in text_chunks:
-            response = ollama.embeddings(model="all-minilm", prompt=chunk["text"])
+            response = ollama.embeddings(model="nomic-embed-text", prompt=chunk["text"])
             batch.add_object(
                 properties={
                     "text": chunk["text"],
@@ -100,8 +111,8 @@ def embed_and_store(collection, text_chunks):
     return len(text_chunks)
 
 # Function to perform RAG query
-def query_documents(collection, query, category=None, limit=3):
-    query_embedding = ollama.embeddings(model="all-minilm", prompt=query)
+def query_documents(collection, query, category=None, limit=5):
+    query_embedding = ollama.embeddings(model="nomic-embed-text", prompt=query)
     
     filters = None
     if category and category != "All Categories":
@@ -156,9 +167,13 @@ Context from HR policy documents:
 {chat_history_text}
 HR professional's question: {query}"""
 
+    # Configure Ollama endpoint
+    ollama_host = os.environ.get("OLLAMA_HOST", "localhost")
+    os.environ["OLLAMA_HOST"] = f"http://{ollama_host}:11434"
+    
     # Generate response
     response = ollama.generate(
-        model="tinyllama",
+        model="llama3",
         prompt=augmented_prompt,
         stream=False,
     )
@@ -227,9 +242,13 @@ This is for general conversation only, not for HR policy questions.
 {chat_history_text}
 User's message: {query}"""
 
+    # Configure Ollama endpoint
+    ollama_host = os.environ.get("OLLAMA_HOST", "localhost")
+    os.environ["OLLAMA_HOST"] = f"http://{ollama_host}:11434"
+    
     # Generate response
     response = ollama.generate(
-        model="tinyllama",
+        model="llama3",
         prompt=prompt,
         stream=False,
     )
@@ -285,7 +304,7 @@ def determine_tool(query):
     
     # Ask the LLM to decide which tool to use
     response = ollama.generate(
-        model="tinyllama",
+        model="llama3",
         prompt=prompt,
         stream=False
     )
@@ -321,272 +340,120 @@ def main():
     client = get_weaviate_client()
     collection = initialize_collection(client)
     
-    # Sidebar for stats and filters
-    with st.sidebar:
-        st.title("HR Policy Assistant")
-        st.write("An AI tool to help HR professionals navigate company policies")
-        
-        # Count documents in the collection
-        try:
-            doc_count = collection.query.fetch_objects().total_count
-            st.info(f"HR Policy documents in database: {doc_count}")
-        except:
-            st.info(f"HR Policy documents in database: 0")
-            
-        # Category filter for chat
-        st.subheader("Filters")
-        selected_category = st.selectbox(
-            "Policy Category",
-            options=POLICY_CATEGORIES
-        )
-        
-        st.session_state.selected_category = selected_category
-        
-        st.write("---")
-        st.write("Technical details:")
-        st.write("- Embeddings: all-minilm")
-        st.write("- LLM: tinyllama")
+    # Set default category to "All Categories"
+    if "selected_category" not in st.session_state:
+        st.session_state.selected_category = "All Categories"
+      # Main Policy Assistant chat interface with improved styling
+    st.markdown("<h1 style='text-align: center; margin-bottom: 0px;'>HR Policy Assistant</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 1.2em; margin-bottom: 20px;'>An AI tool to help HR professionals navigate company policies</p>", unsafe_allow_html=True)
     
-    # Create tabs for Upload and Chat
-    tab1, tab2, tab3 = st.tabs(["📁 Upload Policies", "💬 Policy Assistant", "📊 Policy Dashboard"])
+    # Add horizontal line for visual separation
+    st.markdown("<hr style='margin: 10px 0px 20px 0px;'>", unsafe_allow_html=True)
+      # Document manager link with better styling
+    st.markdown("<div style='text-align: center; margin-bottom: 20px;'><a href='http://localhost:8502/' target='_blank' style='text-decoration: none; color: #4169E1;'>📁 Go to Document Manager - Upload and manage policy documents</a></div>", unsafe_allow_html=True)
     
-    # Upload tab
-    with tab1:
-        st.header("Upload HR Policy Documents")
+    # Action buttons in a cleaner layout
+    st.markdown("<p style='font-weight: bold; margin-bottom: 10px;'>Actions:</p>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear Chat History", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+    with col2:
+        if st.button("🧹 Clear Conversation Memory", use_container_width=True):
+            st.session_state.hr_memory.clear()
+            st.session_state.general_memory.clear()
+            st.info("Conversation memory cleared. The assistant will no longer remember previous interactions.", icon="✅")
+      # Quick access to common HR questions
+    with st.expander("Common HR Policy Questions", expanded=True):
+        common_questions = [
+            "What is our parental leave policy?",
+            "How is performance evaluation conducted?",
+            "What are our remote work guidelines?",
+            "What is the procedure for handling employee grievances?",
+            "What are our diversity and inclusion initiatives?"
+        ]
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            uploaded_files = st.file_uploader("Choose PDF policy documents", 
-                                            type="pdf", 
-                                            accept_multiple_files=True)
-        
-        with col2:
-            if uploaded_files:
-                st.info(f"{len(uploaded_files)} files selected")
-                
-                # Additional metadata for policy documents
-                policy_category = st.selectbox(
-                    "Select Policy Category",
-                    options=POLICY_CATEGORIES[1:],  # Exclude "All Categories"
-                    index=0
-                )
-                
-                last_updated = st.date_input("Policy Last Updated Date")
-                
-                if st.button("Process Policy Documents"):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    total_chunks = 0
-                    for i, pdf_file in enumerate(uploaded_files):
-                        file_name = pdf_file.name  # Store the name separately
-                        status_text.write(f"Processing: {file_name}")
-                        # Save the uploaded file temporarily to process with PyPDF2
-                        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                            tmp_file.write(pdf_file.getvalue())
-                            tmp_path = tmp_file.name
-                        
-                        with open(tmp_path, 'rb') as f:
-                            text_chunks = extract_text_from_pdf(f, file_name, policy_category, last_updated.strftime("%Y-%m-%d"))
-                            chunks_count = embed_and_store(collection, text_chunks)
-                            total_chunks += chunks_count
-                        
-                        # Remove the temporary file
-                        os.unlink(tmp_path)
-                        
-                        # Update progress bar
-                        progress_bar.progress((i + 1) / len(uploaded_files))
-                    
-                    progress_bar.progress(1.0)
-                    st.success(f"Successfully processed {len(uploaded_files)} policy documents with {total_chunks} text chunks.")
+        cols = st.columns(3)
+        for i, question in enumerate(common_questions):
+            with cols[i % 3]:
+                if st.button(question, key=f"q_{i}", use_container_width=True):
+                    st.session_state.current_question = question
     
-    # Chat tab - Policy Assistant
-    with tab2:
-        st.header("HR Policy Assistant")
-        
-        # Quick access to common HR questions
-        with st.expander("Common HR Policy Questions", expanded=True):
-            common_questions = [
-                "What is our parental leave policy?",
-                "How is performance evaluation conducted?",
-                "What are our remote work guidelines?",
-                "What is the procedure for handling employee grievances?",
-                "What are our diversity and inclusion initiatives?"
-            ]
+    # Display chat messages from history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
             
-            cols = st.columns(3)
-            for i, question in enumerate(common_questions):
-                with cols[i % 3]:
-                    if st.button(question, key=f"q_{i}"):
-                        st.session_state.current_question = question
+            # If there are sources, display them
+            if "sources" in message:
+                with st.expander("View policy sources"):
+                    for source in message["sources"]:
+                        st.write(f"**Policy Document:** {source['source']}")
+                        st.write(f"**Category:** {source.get('policy_category', 'General')}")
+                        st.write(f"**Page:** {source['page']}")
+                        st.write(f"**Last Updated:** {source.get('last_updated', '')}")
+                        st.markdown("---")
+                        st.text(source['text'][:200] + "..." if len(source['text']) > 200 else source['text'])
+      # Input for new query with enhanced styling
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    if "current_question" in st.session_state:
+        prompt = st.session_state.current_question
+        del st.session_state.current_question
+    else:
+        prompt = st.chat_input("Ask any question about company policies or general inquiries...")
+    
+    if prompt:
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Display chat messages from history
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        # Display user message in chat
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Display assistant response in chat
+        with st.chat_message("assistant"):
+            with st.spinner("Processing your request..."):
+                # Configure Ollama endpoint
+                ollama_host = os.environ.get("OLLAMA_HOST", "localhost")
+                os.environ["OLLAMA_HOST"] = f"http://{ollama_host}:11434"
                 
-                # If there are sources, display them
-                if "sources" in message:
-                    with st.expander("View policy sources"):
-                        for source in message["sources"]:
-                            st.write(f"**Policy Document:** {source['source']}")
-                            st.write(f"**Category:** {source.get('policy_category', 'General')}")
-                            st.write(f"**Page:** {source['page']}")
-                            st.write(f"**Last Updated:** {source.get('last_updated', '')}")
-                            st.markdown("---")
-                            st.text(source['text'][:200] + "..." if len(source['text']) > 200 else source['text'])
-        
-        # Input for new query
-        if "current_question" in st.session_state:
-            prompt = st.session_state.current_question
-            del st.session_state.current_question
-        else:
-            prompt = st.chat_input("Ask any question about company policies or general inquiries...")
-        
-        if prompt:
-            # Add user message to chat history
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            # Display user message in chat
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            # Display assistant response in chat
-            with st.chat_message("assistant"):
-                with st.spinner("Processing your request..."):
-                    # Use our decision function to choose the appropriate tool
-                    try:
-                        # Determine which tool to use
-                        selected_tool = determine_tool(prompt)
-                        # Execute the selected tool
-                        response = selected_tool(prompt)
-                        
-                        # Display the response
-                        st.markdown(response)
-                        
-                        # If the HR policies tool was used and sources are available, show them
-                        if hasattr(st.session_state, 'last_sources') and st.session_state.last_sources:
-                            with st.expander("View policy sources"):
-                                for source in st.session_state.last_sources:
-                                    st.write(f"**Policy Document:** {source['source']}")
-                                    st.write(f"**Category:** {source.get('policy_category', 'General')}")
-                                    st.write(f"**Page:** {source['page']}")
-                                    st.write(f"**Last Updated:** {source.get('last_updated', '')}")
-                                    st.markdown("---")
-                                    st.text(source['text'][:300] + "..." if len(source['text']) > 300 else source['text'])
-                            
-                            # Add response to chat history with sources
-                            st.session_state.messages.append({
-                                "role": "assistant", 
-                                "content": response,
-                                "sources": st.session_state.last_sources
-                            })
-                        else:
-                            # Add response to chat history without sources (general conversation)
-                            st.session_state.messages.append({
-                                "role": "assistant", 
-                                "content": response
-                            })
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
-                        st.markdown("I encountered an error while processing your request. Please try again.")
-
-# Dashboard tab - Policy Insights
-    with tab3:
-        st.header("HR Policy Dashboard")
-        
-        try:
-            # Get policy statistics
-            try:
-                results = collection.query.fetch_objects(
-                    limit=1000, 
-                    return_properties=["source", "policy_category", "last_updated"]
-                )
-                documents = results.objects
-                
-                if documents:
-                    # Count by category
-                    col1, col2 = st.columns(2)
+                # Use our decision function to choose the appropriate tool
+                try:
+                    # Determine which tool to use
+                    selected_tool = determine_tool(prompt)
+                    # Execute the selected tool
+                    response = selected_tool(prompt)
                     
-                    with col1:
-                        st.subheader("Policies by Category")
-                        
-                        # Count documents by category
-                        category_counts = {}
-                        for doc in documents:
-                            category = doc.properties.get("policy_category", "General")
-                            if category in category_counts:
-                                category_counts[category] += 1
-                            else:
-                                category_counts[category] = 1
-                                
-                        # Display as a table
-                        st.dataframe(
-                            data={"Category": category_counts.keys(), "Count": category_counts.values()},
-                            use_container_width=True
-                        )
+                    # Display the response
+                    st.markdown(response)
                     
-                    with col2:
-                        st.subheader("Recently Updated Policies")
+                    # If the HR policies tool was used and sources are available, show them
+                    if hasattr(st.session_state, 'last_sources') and st.session_state.last_sources:
+                        with st.expander("View policy sources"):
+                            for source in st.session_state.last_sources:
+                                st.write(f"**Policy Document:** {source['source']}")
+                                st.write(f"**Category:** {source.get('policy_category', 'General')}")
+                                st.write(f"**Page:** {source['page']}")
+                                st.write(f"**Last Updated:** {source.get('last_updated', '')}")
+                                st.markdown("---")
+                                st.text(source['text'][:300] + "..." if len(source['text']) > 300 else source['text'])
                         
-                        # Get unique documents by source and their last updated date
-                        docs_by_source = {}
-                        for doc in documents:
-                            source = doc.properties.get("source")
-                            last_updated = doc.properties.get("last_updated", "")
-                            category = doc.properties.get("policy_category", "General")
-                            
-                            if source and source not in docs_by_source:
-                                docs_by_source[source] = {
-                                    "last_updated": last_updated,
-                                    "category": category
-                                }
-                        
-                        # Convert to a list of dictionaries for the dataframe
-                        recent_docs = [
-                            {"Policy": source, "Category": data["category"], "Last Updated": data["last_updated"]}
-                            for source, data in docs_by_source.items()
-                        ]
-                        
-                        # Sort by last updated date (descending)
-                        recent_docs.sort(key=lambda x: x["Last Updated"], reverse=True)
-                        
-                        # Display as a table
-                        st.dataframe(recent_docs, use_container_width=True)
-                    
-                    # Search functionality for policies
-                    st.subheader("Search Policies")
-                    search_col1, search_col2 = st.columns([3, 1])
-                    
-                    with search_col1:
-                        search_term = st.text_input("Search for policy documents by name", placeholder="Enter keywords...")
-                    
-                    with search_col2:
-                        search_button = st.button("Search")
-                    
-                    if search_term and search_button:
-                        st.subheader(f"Search Results: {search_term}")
-                        
-                        # Simple search based on source name containing the search term
-                        results = [
-                            {"Policy": source, "Category": data["category"], "Last Updated": data["last_updated"]}
-                            for source, data in docs_by_source.items()
-                            if search_term.lower() in source.lower()
-                        ]
-                        
-                        if results:
-                            st.dataframe(results, use_container_width=True)
-                        else:
-                            st.info("No matching policies found.")
-                else:
-                    st.info("No policy documents available in the database.")
-            except Exception as e:
-                st.error(f"Error retrieving policy statistics: {e}")
-                
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-            st.info("Please upload policy documents to see statistics.")
+                        # Add response to chat history with sources
+                        st.session_state.messages.append({
+                            "role": "assistant", 
+                            "content": response,
+                            "sources": st.session_state.last_sources
+                        })
+                    else:
+                        # Add response to chat history without sources (general conversation)
+                        st.session_state.messages.append({
+                            "role": "assistant", 
+                            "content": response
+                        })
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                    st.markdown("I encountered an error while processing your request. Please try again.")
 
 if __name__ == "__main__":
     main()

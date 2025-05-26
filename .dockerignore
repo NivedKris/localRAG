@@ -1,0 +1,32 @@
+# Ignore Python virtual environments
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore Git files
+.git/
+.gitignore
+
+# Docker files
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ignore development and editor files
+.vscode/
+.idea/
+*.log
+
+# Ignore large files and temporary files
+*.pdf
+*.zip
+*.tar.gz
+temp/
+tmp/

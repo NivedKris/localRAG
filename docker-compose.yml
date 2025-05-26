@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  weaviate:
+    image: semitechnologies/weaviate:1.24.1
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - rag_network
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - WEAVIATE_HOST=weaviate
+      - WEAVIATE_GRPC_HOST=weaviate
+      - OLLAMA_HOST=host.docker.internal:11434
+    depends_on:
+      - weaviate
+    networks:
+      - rag_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  upload:
+    build:
+      context: .
+      dockerfile: Dockerfile.upload
+    ports:
+      - "8502:8502"
+    environment:
+      - WEAVIATE_HOST=weaviate
+      - WEAVIATE_GRPC_HOST=weaviate
+      - OLLAMA_HOST=host.docker.internal:11434
+    depends_on:
+      - weaviate
+    networks:
+      - rag_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  weaviate_data:
+
+networks:
+  rag_network:
+    driver: bridge

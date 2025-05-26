@@ -19,6 +19,7 @@ An intelligent AI-powered HR Policy Assistant that helps HR professionals quickl
   - [User Interface & Visualization](#user-interface--visualization)
 - [Deployment](#deployment)
   - [Local Deployment](#local-deployment)
+  - [Docker Deployment](#docker-deployment)
   - [Server Deployment](#server-deployment)
 - [Future Improvements](#future-improvements)
 - [Conclusion](#conclusion)
@@ -66,6 +67,8 @@ An intelligent AI-powered HR Policy Assistant that helps HR professionals quickl
 
 ## Setup
 
+### Option 1: Standard Setup
+
 1. Make sure you have Weaviate running locally:
    ```
    docker run -p 8080:8080 -p 50051:50051 cr.weaviate.io/semitechnologies/weaviate:1.24.8
@@ -73,8 +76,8 @@ An intelligent AI-powered HR Policy Assistant that helps HR professionals quickl
 
 2. Make sure you have Ollama running locally and the required models installed:
    ```
-   ollama pull all-minilm
-   ollama pull tinyllama
+   ollama pull nomic-embed-text
+   ollama pull llama3
    ```
 
 3. Install the required Python packages:
@@ -86,6 +89,35 @@ An intelligent AI-powered HR Policy Assistant that helps HR professionals quickl
    ```
    streamlit run app.py
    ```
+   
+5. In a separate terminal, run the document manager:
+   ```
+   streamlit run upload.py
+   ```
+
+### Option 2: Docker Setup
+
+The entire application stack (except for Ollama) can be run using Docker:
+
+1. Make sure Docker and Docker Compose are installed on your system.
+
+2. Ensure your local Ollama service is running with the required models:
+   ```
+   ollama pull nomic-embed-text
+   ollama pull llama3
+   ```
+
+3. Build and start the services:
+   ```
+   docker-compose up --build
+   ```
+
+4. Access the applications at:
+   - HR Policy Assistant: http://localhost:8501
+   - Document Manager: http://localhost:8502
+   - Weaviate: http://localhost:8080
+
+Note: This Docker setup assumes you have Ollama running locally and connects to it from the containers. Data is persisted in a Docker volume.
 
 ## Usage
 
@@ -236,6 +268,53 @@ An intelligent AI-powered HR Policy Assistant that helps HR professionals quickl
 ### Local Deployment
 
 For personal or small team use, the local setup described in the Setup section is sufficient. This ensures maximum privacy as all data and processing remain on your local machine.
+
+### Docker Deployment
+
+The HR Policy Assistant can be deployed using Docker containers for easier setup and management:
+
+1. **Docker Architecture**:
+   - **Weaviate Container**: Vector database for storing and retrieving policy documents
+   - **App Container**: Main HR Policy Assistant interface (app.py)
+   - **Upload Container**: Document management interface (upload.py)
+   - **Local Ollama**: Connects to your local Ollama installation for embeddings and LLM capabilities
+
+2. **Key Files**:
+   - `docker-compose.yml`: Orchestrates all services and their connections
+   - `Dockerfile`: Builds the main HR Policy Assistant container
+   - `Dockerfile.upload`: Builds the document manager container
+
+3. **Data Persistence**:
+   - Weaviate data is stored in a Docker volume (`weaviate_data`)
+   - This ensures your policy documents and embeddings persist between container restarts
+
+4. **Network Configuration**:
+   - All containers run on a custom bridge network (`rag_network`)
+   - Services communicate with each other using their service names
+   - Special configuration allows containers to access your local Ollama installation
+
+5. **Deployment Steps**:
+   ```bash
+   # Ensure Ollama is running locally with required models
+   ollama pull nomic-embed-text
+   ollama pull llama3
+   
+   # Build and start all containers
+   docker-compose up --build
+   
+   # Access the applications
+   # HR Policy Assistant: http://localhost:8501
+   # Document Manager: http://localhost:8502
+   ```
+
+6. **Shutting Down**:
+   ```bash
+   # Stop all containers while preserving data
+   docker-compose down
+   
+   # Stop and remove all containers and volumes (CAUTION: destroys data)
+   docker-compose down -v
+   ```
 
 ### Server Deployment
 
